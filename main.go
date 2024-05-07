@@ -2,25 +2,22 @@ package main
 
 import (
 	"blockchain1/blockchain"
-	"blockchain1/bloks"
+	cliApp "blockchain1/cli"
 	"fmt"
-	"strconv"
+	"github.com/boltdb/bolt"
 )
 
 func main() {
 	fmt.Print("Hello, Blockchain!\n\n")
 
 	bc := blockchain.NewBlockchain()
+	defer func(db *bolt.DB) {
+		err := db.Close()
+		if err != nil {
+			fmt.Print("Error closing db\n")
+		}
+	}(bc.Db)
 
-	bc.AddBlock("Send 1 BTC to Ivan")
-	bc.AddBlock("Send 2 more BTC to Ivan")
-
-	for _, block := range bc.Blocks {
-		fmt.Printf("Prev. hash: %x\n", block.PrevBlockHash)
-		fmt.Printf("Data: %s\n", block.Data)
-		fmt.Printf("Hash: %x\n", block.Hash)
-		pow := bloks.NewProofOfWork(block)
-		fmt.Printf("PoW: %s\n", strconv.FormatBool(pow.Validate()))
-		fmt.Println()
-	}
+	cli := cliApp.CLI{BC: bc}
+	cli.Run()
 }

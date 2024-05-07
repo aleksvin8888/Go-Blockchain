@@ -3,7 +3,9 @@ package bloks
 import (
 	"bytes"
 	"crypto/sha256"
+	"encoding/gob"
 	"fmt"
+	"log"
 	"math"
 	"math/big"
 	"strconv"
@@ -21,7 +23,7 @@ import (
 навіть якщо загальна обчислювальна потужність мережі змінюється.
 */
 const (
-	targetBits = 10
+	targetBits = 16
 	maxNonce   = math.MaxInt64 // максимальне значення для лічильника nonce.
 )
 
@@ -109,6 +111,32 @@ func (pow *ProofOfWork) Run() (int, []byte) {
 	fmt.Print("\n\n")
 
 	return nonce, hash[:]
+}
+
+func (b *Block) Serialize() []byte {
+	var result bytes.Buffer
+
+	encoder := gob.NewEncoder(&result)
+
+	err := encoder.Encode(b)
+	if err != nil {
+		log.Fatal(" Can't serialize block ", err)
+	}
+
+	return result.Bytes()
+}
+
+func DeserializeBlock(d []byte) *Block {
+	var block Block
+
+	decoder := gob.NewDecoder(bytes.NewReader(d))
+
+	err := decoder.Decode(&block)
+	if err != nil {
+		log.Fatal(" Can't deserialize block ", err)
+	}
+
+	return &block
 }
 
 func (pow *ProofOfWork) prepareData(nonce int) []byte {
