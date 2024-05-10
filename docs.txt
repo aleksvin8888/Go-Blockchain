@@ -5,3 +5,8 @@ https://jeiwan.net/posts/building-blockchain-in-go-part-4/
 https://jeiwan.net/posts/building-blockchain-in-go-part-5/
 https://jeiwan.net/posts/building-blockchain-in-go-part-6/
 https://jeiwan.net/posts/building-blockchain-in-go-part-7/
+
+
+Your new address: 19B7kx2xUxHCAFGZbDDmaJ3gjb2kNdXJ2K
+
+Your new address: 19bzzx3JsRNpBL3KWikAY2613LfpoyghbB

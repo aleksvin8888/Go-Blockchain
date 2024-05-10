@@ -1,7 +1,7 @@
 package bloks
 
 import (
-	"blockchain1/transactions"
+	"blockchain1/transaction"
 	"bytes"
 	"crypto/sha256"
 	"encoding/gob"
@@ -12,27 +12,33 @@ import (
 /*
 Block : структура, що представляє блок у блокчейні.
 - Timestamp - час створення блока.
+- Transactions - масив транзакцій фактично представляє собою дані, які будуть зберігатися в блоку.
 - PrevBlockHash - зберігає хеш попереднього блоку.
 - Hash - містить хеш поточного блоку.
-
-Замінюємо Data на Transactions, щоб зберігати транзакції в блоках.
+- Nonce - використовується для доказу роботи.
 */
 type Block struct {
 	Timestamp     int64
-	Transactions  []*transactions.Transaction
+	Transactions  []*transaction.Transaction
 	PrevBlockHash []byte
 	Hash          []byte
 	Nonce         int
 }
 
-func NewGenesisBlock(coinbase *transactions.Transaction) *Block {
+/*
+NewGenesisBlock : використовується для створення першого genesis блоку.
+*/
+func NewGenesisBlock(coinbase *transaction.Transaction) *Block {
 	return NewBlock(
-		[]*transactions.Transaction{coinbase},
+		[]*transaction.Transaction{coinbase},
 		[]byte{},
 	)
 }
 
-func NewBlock(transaction []*transactions.Transaction, prevBlockHash []byte) *Block {
+/*
+NewBlock : використовується для створення нового блоку.
+*/
+func NewBlock(transaction []*transaction.Transaction, prevBlockHash []byte) *Block {
 	block := &Block{
 		Timestamp:     time.Now().Unix(),
 		Transactions:  transaction,
@@ -50,7 +56,7 @@ func NewBlock(transaction []*transactions.Transaction, prevBlockHash []byte) *Bl
 }
 
 /*
-Serialize : Цей метод використовується для серіалізації блоку.
+Serialize : використовується для серіалізації блоку.
 */
 func (b *Block) Serialize() []byte {
 	var result bytes.Buffer
@@ -66,7 +72,7 @@ func (b *Block) Serialize() []byte {
 }
 
 /*
-DeserializeBlock : Цей метод використовується для десеріалізації блоку.
+DeserializeBlock : використовується для десеріалізації блоку.
 */
 func DeserializeBlock(d []byte) *Block {
 	var block Block
@@ -82,7 +88,7 @@ func DeserializeBlock(d []byte) *Block {
 }
 
 /*
-HashTransactions : Цей метод використовується для обчислення хешу транзакцій у блоку.
+HashTransactions : використовується для обчислення хешу транзакцій у блоку.
 */
 func (b *Block) HashTransactions() []byte {
 	var txHashes [][]byte

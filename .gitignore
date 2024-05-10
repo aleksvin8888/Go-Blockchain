@@ -1,5 +1,6 @@
 
 .idea
 .vscode
-blockchain.db
+*.db
+*.dat
 blockchain1
