@@ -1,12 +1,12 @@
 package bloks
 
 import (
+	"blockchain1/lib/utils"
 	"bytes"
 	"crypto/sha256"
 	"fmt"
 	"math"
 	"math/big"
-	"strconv"
 )
 
 /*
@@ -23,7 +23,7 @@ targetBits
 maxNonce - максимальне значення для лічильника nonce.
 */
 const (
-	targetBits = 16
+	targetBits = 17
 	maxNonce   = math.MaxInt64
 )
 
@@ -89,9 +89,9 @@ func (pow *ProofOfWork) prepareData(nonce int) []byte {
 		[][]byte{
 			pow.Block.PrevBlockHash,
 			pow.Block.HashTransactions(),
-			intToHex(pow.Block.Timestamp),
-			intToHex(int64(targetBits)),
-			intToHex(int64(nonce)),
+			utils.IntToHex(pow.Block.Timestamp),
+			utils.IntToHex(int64(targetBits)),
+			utils.IntToHex(int64(nonce)),
 		},
 		[]byte{},
 	)
@@ -113,8 +113,4 @@ func (pow *ProofOfWork) Validate() bool {
 
 	return isValid
 
-}
-
-func intToHex(n int64) []byte {
-	return []byte(strconv.FormatInt(n, 16))
 }

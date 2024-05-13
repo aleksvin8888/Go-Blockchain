@@ -14,7 +14,7 @@ func (cli *CLI) getBalance(address string) {
 		log.Fatal("ERROR: Address is not valid")
 	}
 
-	bc := blockchain.NewBlockchain(address)
+	bc := blockchain.NewBlockchain()
 	defer func(Db *bolt.DB) {
 		err := Db.Close()
 		if err != nil {
@@ -22,13 +22,16 @@ func (cli *CLI) getBalance(address string) {
 		}
 	}(bc.Db)
 
+	UTXOSet := blockchain.UTXOSet{
+		Blockchain: bc,
+	}
+
 	balance := 0
 	pubKeyHash := base58.Decode([]byte(address))
 	pubKeyHash = pubKeyHash[1 : len(pubKeyHash)-4]
-	UTXOs := bc.FindUTXO(pubKeyHash)
+	UTXOs := UTXOSet.FindUTXO(pubKeyHash)
 	for _, out := range UTXOs {
 		balance += out.Value
-
 	}
 
 	fmt.Printf("Balance of '%s': %d\n", address, balance)

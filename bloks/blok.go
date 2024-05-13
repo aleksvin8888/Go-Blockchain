@@ -1,9 +1,9 @@
 package bloks
 
 import (
+	"blockchain1/merkleTree"
 	"blockchain1/transaction"
 	"bytes"
-	"crypto/sha256"
 	"encoding/gob"
 	"log"
 	"time"
@@ -91,13 +91,13 @@ func DeserializeBlock(d []byte) *Block {
 HashTransactions : використовується для обчислення хешу транзакцій у блоку.
 */
 func (b *Block) HashTransactions() []byte {
-	var txHashes [][]byte
-	var txHash [32]byte
+	var transactions [][]byte
 
 	for _, tx := range b.Transactions {
-		txHashes = append(txHashes, tx.ID)
+		transactions = append(transactions, tx.Serialize())
 	}
-	txHash = sha256.Sum256(bytes.Join(txHashes, []byte{}))
 
-	return txHash[:]
+	mTree := merkleTree.NewMerkleTree(transactions)
+
+	return mTree.RootNode.Data
 }

@@ -10,7 +10,7 @@ import (
 
 func (cli *CLI) printChain() {
 
-	bc := blockchain.NewBlockchain("")
+	bc := blockchain.NewBlockchain()
 	defer func(Db *bolt.DB) {
 		err := Db.Close()
 		if err != nil {

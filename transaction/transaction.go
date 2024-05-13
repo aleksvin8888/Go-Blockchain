@@ -37,7 +37,13 @@ NewCoinbaseTX створює нову транзакцію Coinbase.
 */
 func NewCoinbaseTX(to string, data string) *Transaction {
 	if data == "" {
-		data = fmt.Sprintf("Reward to '%s'", to)
+		randData := make([]byte, 20)
+		_, err := rand.Read(randData)
+		if err != nil {
+			log.Panic(err)
+		}
+
+		data = fmt.Sprintf("%x", randData)
 	}
 
 	txIn := TXInput{
@@ -53,7 +59,7 @@ func NewCoinbaseTX(to string, data string) *Transaction {
 		VIn:  []TXInput{txIn},
 		VOut: []TXOutput{*txOut},
 	}
-	tx.SetID()
+	tx.ID = tx.Hash()
 
 	return &tx
 }
@@ -185,22 +191,6 @@ func (tx *Transaction) Verify(prevTXs map[string]Transaction) bool {
 	}
 
 	return true
-}
-
-/*
-SetID встановлює ідентифікатор транзакції
-*/
-func (tx *Transaction) SetID() {
-	var encoded bytes.Buffer
-	var hash [32]byte
-
-	enc := gob.NewEncoder(&encoded)
-	err := enc.Encode(tx)
-	if err != nil {
-		log.Panic(err)
-	}
-	hash = sha256.Sum256(encoded.Bytes())
-	tx.ID = hash[:]
 }
 
 // IsCoinbase визначає, чи є транзакція транзакцією Coinbase

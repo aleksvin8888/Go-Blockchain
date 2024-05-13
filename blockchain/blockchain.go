@@ -77,7 +77,7 @@ func CreateBlockchain(address string) *Blockchain {
 /*
 NewBlockchain створює новий Blockchain з genesis блоком.
 */
-func NewBlockchain(address string) *Blockchain {
+func NewBlockchain() *Blockchain {
 	if dbExists() == false {
 		fmt.Println("Blockchain ще не створено. Спочатку створіть його.")
 		os.Exit(1)
@@ -111,7 +111,7 @@ func NewBlockchain(address string) *Blockchain {
 NewUTXOTransaction створює нову транзакцію UTXO,
 фактично відправляємо монети з одного гаманця на інший.
 */
-func NewUTXOTransaction(from string, to string, amount int, bc *Blockchain) *transaction.Transaction {
+func NewUTXOTransaction(from string, to string, amount int, UTXOSet *UTXOSet) *transaction.Transaction {
 	var inputs []transaction.TXInput
 	var outputs []transaction.TXOutput
 
@@ -122,13 +122,13 @@ func NewUTXOTransaction(from string, to string, amount int, bc *Blockchain) *tra
 
 	wallet := wallets.GetWallet(from)
 	pubKeyHash := wal.HashPubKey(wallet.PublicKey)
-	acc, validOutputs := bc.FindSpendableOutputs(pubKeyHash, amount)
+	acc, validOutputs := UTXOSet.FindSpendableOutputs(pubKeyHash, amount)
 	if acc < amount {
 		log.Print("Error: Недостатньо коштів")
 		os.Exit(0)
 	}
 
-	//складаємо список входів
+	//складаємо список inputs
 	for txId, outs := range validOutputs {
 		txID, err := hex.DecodeString(txId)
 		if err != nil {
@@ -146,7 +146,7 @@ func NewUTXOTransaction(from string, to string, amount int, bc *Blockchain) *tra
 		}
 	}
 
-	// складаємо список виходів
+	// складаємо список outputs
 	outputs = append(outputs, *transaction.NewTXOutput(amount, to))
 	if acc > amount {
 		outputs = append(outputs, *transaction.NewTXOutput(acc-amount, from))
@@ -164,7 +164,7 @@ func NewUTXOTransaction(from string, to string, amount int, bc *Blockchain) *tra
 		log.Panic(err)
 	}
 
-	bc.SignTransaction(&tx, *privateKey) // передаємо створену транзакцію у процес підпису
+	UTXOSet.Blockchain.SignTransaction(&tx, *privateKey) // передаємо створену транзакцію у процес підпису
 
 	return &tx
 }
@@ -172,7 +172,7 @@ func NewUTXOTransaction(from string, to string, amount int, bc *Blockchain) *tra
 /*
 MineBlock додає новий блок до ланцюга Blockchain.
 */
-func (bc *Blockchain) MineBlock(transactions []*transaction.Transaction) {
+func (bc *Blockchain) MineBlock(transactions []*transaction.Transaction) *bloks.Block {
 	var lastHash []byte
 
 	// перевірка чи транзакції валідні перед додаванням нового блоку
@@ -208,6 +208,11 @@ func (bc *Blockchain) MineBlock(transactions []*transaction.Transaction) {
 		bc.tip = newBlock.Hash
 		return nil
 	})
+	if err != nil {
+		log.Panic(err)
+	}
+
+	return newBlock
 }
 
 /*
@@ -223,13 +228,13 @@ func (bc *Blockchain) Iterator() *Iterator {
 }
 
 /*
-FindUnspentTransactions знаходить та повертає список всіх непотрачених транзакцій.
+FindUTXO знаходить усі невитрачені результати транзакції та повертає транзакції з вилученими витраченими результатами
 */
-func (bc *Blockchain) FindUnspentTransactions(pubKeyHash []byte) []transaction.Transaction {
-	var unspentTXs []transaction.Transaction
+func (bc *Blockchain) FindUTXO() map[string]transaction.TXOutputs {
+	UTXO := make(map[string]transaction.TXOutputs)
 	spentTXOs := make(map[string][]int)
-
 	bci := bc.Iterator()
+
 	for {
 		block := bci.Next()
 
@@ -238,7 +243,7 @@ func (bc *Blockchain) FindUnspentTransactions(pubKeyHash []byte) []transaction.T
 
 		Outputs:
 			for outIdx, out := range tx.VOut {
-				//перевірка чи вже витрачений вихід
+				// перевірка чи вже витрачений вихід
 				if spentTXOs[txID] != nil {
 					for _, spentOutIdx := range spentTXOs[txID] {
 						if spentOutIdx == outIdx {
@@ -246,20 +251,18 @@ func (bc *Blockchain) FindUnspentTransactions(pubKeyHash []byte) []transaction.T
 						}
 					}
 				}
-
-				if out.IsLockedWithKey(pubKeyHash) {
-					unspentTXs = append(unspentTXs, *tx)
-				}
+				outs := UTXO[txID]
+				outs.Outputs = append(outs.Outputs, out)
+				UTXO[txID] = outs
 			}
 
 			if tx.IsCoinbase() == false {
 				for _, in := range tx.VIn {
-					if in.UsesKey(pubKeyHash) {
-						inTxID := hex.EncodeToString(in.TxId)
-						spentTXOs[inTxID] = append(spentTXOs[inTxID], in.VOut)
-					}
+					inTxID := hex.EncodeToString(in.TxId)
+					spentTXOs[inTxID] = append(spentTXOs[inTxID], in.VOut)
 				}
 			}
+
 		}
 
 		if len(block.PrevBlockHash) == 0 {
@@ -267,51 +270,7 @@ func (bc *Blockchain) FindUnspentTransactions(pubKeyHash []byte) []transaction.T
 		}
 	}
 
-	return unspentTXs
-}
-
-/*
-FindUTXO знаходить та повертає всі непотрачені виходи транзакцій, які можуть бути розблоковані за допомогою публічного ключа.
-*/
-func (bc *Blockchain) FindUTXO(pubKeyHash []byte) []transaction.TXOutput {
-	var UTXOs []transaction.TXOutput
-	unspentTransactions := bc.FindUnspentTransactions(pubKeyHash)
-
-	for _, tx := range unspentTransactions {
-		for _, out := range tx.VOut {
-			if out.IsLockedWithKey(pubKeyHash) {
-				UTXOs = append(UTXOs, out)
-			}
-		}
-	}
-
-	return UTXOs
-}
-
-/*
-FindSpendableOutputs знаходить та повертає доступну кількість виходів, які можуть бути витрачені за допомогою публічного ключа,
-*/
-func (bc *Blockchain) FindSpendableOutputs(pubKeyHash []byte, amount int) (int, map[string][]int) {
-	unspentOutputs := make(map[string][]int)
-	unspentTXs := bc.FindUnspentTransactions(pubKeyHash)
-	accumulated := 0
-
-Work:
-	for _, tx := range unspentTXs {
-		txID := hex.EncodeToString(tx.ID)
-		for outIdx, out := range tx.VOut {
-			if out.IsLockedWithKey(pubKeyHash) && accumulated < amount {
-				accumulated += out.Value
-				unspentOutputs[txID] = append(unspentOutputs[txID], outIdx)
-
-				if accumulated >= amount {
-					break Work
-				}
-			}
-		}
-	}
-
-	return accumulated, unspentOutputs
+	return UTXO
 }
 
 /*
