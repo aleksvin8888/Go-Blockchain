@@ -23,6 +23,7 @@ type Block struct {
 	PrevBlockHash []byte
 	Hash          []byte
 	Nonce         int
+	Height        int
 }
 
 /*
@@ -32,18 +33,21 @@ func NewGenesisBlock(coinbase *transaction.Transaction) *Block {
 	return NewBlock(
 		[]*transaction.Transaction{coinbase},
 		[]byte{},
+		0,
 	)
 }
 
 /*
 NewBlock : використовується для створення нового блоку.
 */
-func NewBlock(transaction []*transaction.Transaction, prevBlockHash []byte) *Block {
+func NewBlock(transaction []*transaction.Transaction, prevBlockHash []byte, height int) *Block {
 	block := &Block{
 		Timestamp:     time.Now().Unix(),
 		Transactions:  transaction,
 		PrevBlockHash: prevBlockHash,
 		Hash:          []byte{},
+		Nonce:         0,
+		Height:        height,
 	}
 
 	pow := NewProofOfWork(block)

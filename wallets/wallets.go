@@ -10,7 +10,7 @@ import (
 	"os"
 )
 
-const walletFile = "wallet.dat"
+const walletFile = "wallet_%s.dat"
 
 /*
 Wallets зберігає колекцію гаманців
@@ -22,11 +22,11 @@ type Wallets struct {
 /*
 NewWallets створює гаманці та заповнює їх з файлу, якщо він існує
 */
-func NewWallets() (*Wallets, error) {
+func NewWallets(nodeID string) (*Wallets, error) {
 	wallets := Wallets{}
 	wallets.Wallets = make(map[string]*wal.Wallet)
 
-	err := wallets.LoadFromFile()
+	err := wallets.LoadFromFile(nodeID)
 
 	return &wallets, err
 }
@@ -66,7 +66,9 @@ func (ws *Wallets) GetAddresses() []string {
 /*
 LoadFromFile завантажує гаманці з файлу у структуру Wallets
 */
-func (ws *Wallets) LoadFromFile() error {
+func (ws *Wallets) LoadFromFile(nodeID string) error {
+	walletFile := fmt.Sprintf(walletFile, nodeID)
+
 	if _, err := os.Stat(walletFile); os.IsNotExist(err) {
 		return err
 	}
@@ -93,9 +95,9 @@ func (ws *Wallets) LoadFromFile() error {
 /*
 SaveToFile зберігає гаманці у файл
 */
-func (ws *Wallets) SaveToFile() {
+func (ws *Wallets) SaveToFile(nodeID string) {
 	var content bytes.Buffer
-
+	walletFile := fmt.Sprintf(walletFile, nodeID)
 	gob.Register(elliptic.P256())
 
 	encoder := gob.NewEncoder(&content)

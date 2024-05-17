@@ -3,34 +3,42 @@ package cli
 import (
 	"blockchain1/blockchain"
 	"blockchain1/bloks"
-	"github.com/boltdb/bolt"
-	"log"
+	"fmt"
 	"strconv"
 )
 
-func (cli *CLI) printChain() {
+func (cli *CLI) printChain(nodeID string) {
 
-	bc := blockchain.NewBlockchain()
-	defer func(Db *bolt.DB) {
-		err := Db.Close()
-		if err != nil {
-			log.Panic(err)
-		}
-	}(bc.Db)
+	bc := blockchain.NewBlockchain(nodeID)
+	defer func() { _ = bc.Db.Close() }()
 
 	bci := bc.Iterator()
 
 	for {
 		block := bci.Next()
 
-		log.Printf("Prev. hash: %x\n", block.PrevBlockHash)
-		log.Printf("Hash: %x\n", block.Hash)
+		fmt.Printf("============ Block %x ============\n", block.Hash)
+		fmt.Printf("Height: %d\n", block.Height)
+		fmt.Printf("Prev. block: %x\n", block.PrevBlockHash)
 		pow := bloks.NewProofOfWork(block)
-		log.Printf("PoW: %s\n", strconv.FormatBool(pow.Validate()))
+		fmt.Printf("PoW: %s\n\n", strconv.FormatBool(pow.Validate()))
 		for _, tx := range block.Transactions {
-			log.Printf("Transaction ID: %x\n", tx.ID)
+			fmt.Printf("Transaction ID: %xn", tx.ID)
+			fmt.Println("VIn:")
+			for _, vin := range tx.VIn {
+				fmt.Printf("tTxID: %x\n", vin.TxId)
+				fmt.Printf("tVout: %d\n", vin.VOut)
+				fmt.Printf("tSignature: %x\n", vin.Signature)
+				fmt.Printf("tPubKey: %x\n", vin.PubKey)
+			}
+			fmt.Println("VOut:")
+			for _, vout := range tx.VOut {
+				fmt.Printf("tValue: %d\n", vout.Value)
+				fmt.Printf("tScriptPubKey: %x\n", vout.PubKeyHash)
+			}
+			fmt.Println()
 		}
-		log.Println("------------------------------------------------------------------")
+		fmt.Printf("\n\n")
 
 		if len(block.PrevBlockHash) == 0 {
 			break

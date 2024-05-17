@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log"
 	"math/big"
+	"strings"
 )
 
 /*
@@ -73,22 +74,29 @@ func (tx *Transaction) Sing(privetKey ecdsa.PrivateKey, prevTXs map[string]Trans
 		return
 	}
 
+	for _, vin := range tx.VIn {
+		if prevTXs[hex.EncodeToString(vin.TxId)].ID == nil {
+			log.Panic("ERROR: Previous transaction is not correct")
+		}
+	}
+
 	txCopy := tx.TrimmedCopy()
 
 	for inID, vin := range txCopy.VIn {
 		prevTx := prevTXs[hex.EncodeToString(vin.TxId)]
 		txCopy.VIn[inID].Signature = nil
 		txCopy.VIn[inID].PubKey = prevTx.VOut[vin.VOut].PubKeyHash
-		txCopy.ID = txCopy.Hash()
-		txCopy.VIn[inID].PubKey = nil
 
-		r, s, err := ecdsa.Sign(rand.Reader, &privetKey, txCopy.ID)
+		dataToSign := fmt.Sprintf("%x\n", txCopy)
+
+		r, s, err := ecdsa.Sign(rand.Reader, &privetKey, []byte(dataToSign))
 		if err != nil {
 			log.Panic(err)
 		}
 		signature := append(r.Bytes(), s.Bytes()...)
 
 		tx.VIn[inID].Signature = signature
+		txCopy.VIn[inID].PubKey = nil
 	}
 
 }
@@ -139,6 +147,25 @@ func (tx *Transaction) Hash() []byte {
 	return hash[:]
 }
 
+// String returns a human-readable representation of a transaction
+func (tx *Transaction) toString() string {
+	var lines []string
+	lines = append(lines, fmt.Sprintf("--- Transaction %x:", tx.ID))
+	for i, input := range tx.VIn {
+		lines = append(lines, fmt.Sprintf("     Input %d:", i))
+		lines = append(lines, fmt.Sprintf("       TXID:      %x", input.TxId))
+		lines = append(lines, fmt.Sprintf("       Out:       %d", input.VOut))
+		lines = append(lines, fmt.Sprintf("       Signature: %x", input.Signature))
+		lines = append(lines, fmt.Sprintf("       PubKey:    %x", input.PubKey))
+	}
+	for i, output := range tx.VOut {
+		lines = append(lines, fmt.Sprintf("     Output %d:", i))
+		lines = append(lines, fmt.Sprintf("       Value:  %d", output.Value))
+		lines = append(lines, fmt.Sprintf("       Script: %x", output.PubKeyHash))
+	}
+	return strings.Join(lines, "\n")
+}
+
 /*
 Serialize повертає копію сереалізованої транзакції
 */
@@ -158,6 +185,17 @@ func (tx *Transaction) Serialize() []byte {
 Verify перевіряє підписи транзакції
 */
 func (tx *Transaction) Verify(prevTXs map[string]Transaction) bool {
+
+	if tx.IsCoinbase() {
+		return true
+	}
+
+	for _, vin := range tx.VIn {
+		if prevTXs[hex.EncodeToString(vin.TxId)].ID == nil {
+			log.Panic("ERROR: Previous transaction is not correct")
+		}
+	}
+
 	txCopy := tx.TrimmedCopy()
 	curve := elliptic.P256()
 
@@ -165,8 +203,6 @@ func (tx *Transaction) Verify(prevTXs map[string]Transaction) bool {
 		prevTx := prevTXs[hex.EncodeToString(vin.TxId)]
 		txCopy.VIn[inID].Signature = nil
 		txCopy.VIn[inID].PubKey = prevTx.VOut[vin.VOut].PubKeyHash
-		txCopy.ID = txCopy.Hash()
-		txCopy.VIn[inID].PubKey = nil
 
 		r := big.Int{}
 		s := big.Int{}
@@ -180,17 +216,28 @@ func (tx *Transaction) Verify(prevTXs map[string]Transaction) bool {
 		x.SetBytes(vin.PubKey[:(keyLen / 2)])
 		y.SetBytes(vin.PubKey[(keyLen / 2):])
 
-		rawPubKey := ecdsa.PublicKey{
-			Curve: curve,
-			X:     &x,
-			Y:     &y,
-		}
-		if ecdsa.Verify(&rawPubKey, txCopy.ID, &r, &s) == false {
+		dataToVerify := fmt.Sprintf("%x\n", txCopy)
+
+		rawPubKey := ecdsa.PublicKey{Curve: curve, X: &x, Y: &y}
+		if ecdsa.Verify(&rawPubKey, []byte(dataToVerify), &r, &s) == false {
 			return false
 		}
+		txCopy.VIn[inID].PubKey = nil
 	}
 
 	return true
+}
+
+func DeserializeTransaction(data []byte) Transaction {
+	var transaction Transaction
+
+	decoder := gob.NewDecoder(bytes.NewReader(data))
+	err := decoder.Decode(&transaction)
+	if err != nil {
+		log.Panic(err)
+	}
+
+	return transaction
 }
 
 // IsCoinbase визначає, чи є транзакція транзакцією Coinbase

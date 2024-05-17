@@ -48,26 +48,20 @@ Run : Цей метод виконує процес майнінгу блоку 
 використовуючи алгоритм доказу роботи (Proof of Work).
 */
 func (pow *ProofOfWork) Run() (int, []byte) {
-	var hashInt big.Int //  змінна для зберігання цілочисельного значення хешу
-	var hash [32]byte   //  масив з 32 байтів для зберігання хешу блоку.
-	nonce := 0          // лічильник, який використовується для знаходження правильного хешу.
+	var hashInt big.Int
+	var hash [32]byte
+	nonce := 0
 
-	fmt.Printf("Mining the block")
+	fmt.Printf("Mining a new block")
 	for nonce < maxNonce {
-		data := pow.prepareData(nonce) // Викликається метод prepareData з поточним значенням nonce, щоб підготувати дані для хешування.
-		hash = sha256.Sum256(data)     // Викликається sha256.Sum256(data) для обчислення хешу даних.
+		data := pow.prepareData(nonce)
+		hash = sha256.Sum256(data)
 
-		fmt.Printf("\r%x", hash)  // Виводиться хеш в шістнадцятковому форматі.
-		hashInt.SetBytes(hash[:]) // встановлюється як цілочисельне значення хешу.
+		if math.Remainder(float64(nonce), 100000) == 0 {
+			fmt.Printf("\r%x", hash)
+		}
+		hashInt.SetBytes(hash[:])
 
-		/*
-				Перевірка згенерованого хешу:
-			   - Використовуючи метод Cmp типу big.Int,
-				порівнюється hashInt (цілочисельне представлення згенерованого хешу)
-				з pow.target (цільовим значенням хешу, яке визначає складність майнінгу).
-				Якщо hashInt менше pow.target (hashInt.Cmp(pow.target) == -1), то цикл припиняється,
-				оскільки було знайдено валідний nonce.
-		*/
 		if hashInt.Cmp(pow.Target) == -1 {
 			break
 		} else {

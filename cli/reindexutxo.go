@@ -3,18 +3,11 @@ package cli
 import (
 	"blockchain1/blockchain"
 	"fmt"
-	"github.com/boltdb/bolt"
-	"log"
 )
 
-func (cli *CLI) reindexUTXO() {
-	bc := blockchain.NewBlockchain()
-	defer func(Db *bolt.DB) {
-		err := Db.Close()
-		if err != nil {
-			log.Panic(err)
-		}
-	}(bc.Db)
+func (cli *CLI) reindexUTXO(nodeID string) {
+	bc := blockchain.NewBlockchain(nodeID)
+	defer func() { _ = bc.Db.Close() }()
 
 	UTXOSet := blockchain.UTXOSet{
 		Blockchain: bc,

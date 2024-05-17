@@ -5,22 +5,16 @@ import (
 	"blockchain1/lib/base58"
 	wal "blockchain1/wallet"
 	"fmt"
-	"github.com/boltdb/bolt"
 	"log"
 )
 
-func (cli *CLI) getBalance(address string) {
+func (cli *CLI) getBalance(address string, nodeID string) {
 	if !wal.ValidateAddress(address) {
 		log.Fatal("ERROR: Address is not valid")
 	}
 
-	bc := blockchain.NewBlockchain()
-	defer func(Db *bolt.DB) {
-		err := Db.Close()
-		if err != nil {
-			log.Panic(err)
-		}
-	}(bc.Db)
+	bc := blockchain.NewBlockchain(nodeID)
+	defer func() { _ = bc.Db.Close() }()
 
 	UTXOSet := blockchain.UTXOSet{
 		Blockchain: bc,

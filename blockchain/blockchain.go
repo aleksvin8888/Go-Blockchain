@@ -5,7 +5,6 @@ import (
 	"blockchain1/lib/utils"
 	"blockchain1/transaction"
 	wal "blockchain1/wallet"
-	ws "blockchain1/wallets"
 	"bytes"
 	"crypto/ecdsa"
 	"encoding/hex"
@@ -17,7 +16,7 @@ import (
 )
 
 const (
-	dbFile              = "blockchain.db"
+	dbFile              = "blockchain_%s.db"
 	blocksBucket        = "blocks"
 	genesisCoinbaseData = "The Times 03/Jan/2009 Chancellor on brink of second bailout for banks"
 )
@@ -31,12 +30,15 @@ type Blockchain struct {
 }
 
 // CreateBlockchain створює нову базу даних Blockchain з genesis блоком.
-func CreateBlockchain(address string) *Blockchain {
-	if dbExists() {
-		fmt.Println("Blockchain уже існує.")
+func CreateBlockchain(address string, nodeID string) *Blockchain {
+	dbFile := fmt.Sprintf(dbFile, nodeID)
+	if dbExists(dbFile) {
+		fmt.Println("Blockchain already exists.")
 		os.Exit(1)
 	}
+
 	var tip []byte
+
 	db, err := bolt.Open(dbFile, 0600, nil)
 	if err != nil {
 		log.Panic(err)
@@ -69,17 +71,21 @@ func CreateBlockchain(address string) *Blockchain {
 		log.Panic(err)
 	}
 
-	bc := Blockchain{tip, db}
+	bc := Blockchain{
+		tip: tip,
+		Db:  db,
+	}
 
 	return &bc
 }
 
 /*
-NewBlockchain створює новий Blockchain з genesis блоком.
+NewBlockchain створює та повертає новий екземпляр Blockchain.
 */
-func NewBlockchain() *Blockchain {
-	if dbExists() == false {
-		fmt.Println("Blockchain ще не створено. Спочатку створіть його.")
+func NewBlockchain(nodeID string) *Blockchain {
+	dbFile := fmt.Sprintf(dbFile, nodeID)
+	if dbExists(dbFile) == false {
+		fmt.Println("Blockchain databases are not known. Create one! or check the dbFile path.")
 		os.Exit(1)
 	}
 
@@ -111,17 +117,12 @@ func NewBlockchain() *Blockchain {
 NewUTXOTransaction створює нову транзакцію UTXO,
 фактично відправляємо монети з одного гаманця на інший.
 */
-func NewUTXOTransaction(from string, to string, amount int, UTXOSet *UTXOSet) *transaction.Transaction {
+func NewUTXOTransaction(wallet *wal.Wallet, to string, amount int, UTXOSet *UTXOSet) *transaction.Transaction {
 	var inputs []transaction.TXInput
 	var outputs []transaction.TXOutput
 
-	wallets, err := ws.NewWallets()
-	if err != nil {
-		log.Panic(err)
-	}
-
-	wallet := wallets.GetWallet(from)
 	pubKeyHash := wal.HashPubKey(wallet.PublicKey)
+
 	acc, validOutputs := UTXOSet.FindSpendableOutputs(pubKeyHash, amount)
 	if acc < amount {
 		log.Print("Error: Недостатньо коштів")
@@ -147,6 +148,7 @@ func NewUTXOTransaction(from string, to string, amount int, UTXOSet *UTXOSet) *t
 	}
 
 	// складаємо список outputs
+	from := fmt.Sprintf("%s", wallet.GetAddress())
 	outputs = append(outputs, *transaction.NewTXOutput(amount, to))
 	if acc > amount {
 		outputs = append(outputs, *transaction.NewTXOutput(acc-amount, from))
@@ -174,11 +176,12 @@ MineBlock додає новий блок до ланцюга Blockchain.
 */
 func (bc *Blockchain) MineBlock(transactions []*transaction.Transaction) *bloks.Block {
 	var lastHash []byte
+	var lastHeight int
 
 	// перевірка чи транзакції валідні перед додаванням нового блоку
 	for _, tx := range transactions {
 		if bc.VerifyTransaction(tx) != true {
-			log.Fatal("Помилка: транзакція не є дійсною")
+			log.Fatal("ERROR: Invalid transaction")
 		}
 	}
 
@@ -186,13 +189,19 @@ func (bc *Blockchain) MineBlock(transactions []*transaction.Transaction) *bloks.
 	err := bc.Db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(blocksBucket))
 		lastHash = b.Get([]byte("l"))
+
+		blockData := b.Get(lastHash)
+		block := bloks.DeserializeBlock(blockData)
+		lastHeight = block.Height
+
 		return nil
 	})
 	if err != nil {
 		log.Panic(err)
 	}
+
 	// створення нового блоку
-	newBlock := bloks.NewBlock(transactions, lastHash)
+	newBlock := bloks.NewBlock(transactions, lastHash, lastHeight+1)
 
 	// оновлення бази даних Blockchain з новим блоком
 	err = bc.Db.Update(func(tx *bolt.Tx) error {
@@ -297,21 +306,17 @@ FindTransaction  Пошук транзакції по ID
 */
 func (bc *Blockchain) FindTransaction(ID []byte) (transaction.Transaction, error) {
 	bci := bc.Iterator()
-
 	for {
 		block := bci.Next()
-
 		for _, tx := range block.Transactions {
 			if bytes.Compare(tx.ID, ID) == 0 {
 				return *tx, nil
 			}
 		}
-
 		if len(block.PrevBlockHash) == 0 {
 			break
 		}
 	}
-
 	return transaction.Transaction{}, errors.New("транзакція не знайдена")
 }
 
@@ -319,13 +324,10 @@ func (bc *Blockchain) FindTransaction(ID []byte) (transaction.Transaction, error
 VerifyTransaction перевіряє чи транзакція є дійсною
 */
 func (bc *Blockchain) VerifyTransaction(tx *transaction.Transaction) bool {
-
 	if tx.IsCoinbase() {
 		return true
 	}
-
 	prevTXs := make(map[string]transaction.Transaction)
-
 	for _, vin := range tx.VIn {
 		prevTX, err := bc.FindTransaction(vin.TxId)
 		if err != nil {
@@ -333,14 +335,118 @@ func (bc *Blockchain) VerifyTransaction(tx *transaction.Transaction) bool {
 		}
 		prevTXs[hex.EncodeToString(prevTX.ID)] = prevTX
 	}
-
 	return tx.Verify(prevTXs)
+}
+
+/*
+GetBestHeight повертає висоту останнього блоку в ланцюгу.
+*/
+func (bc *Blockchain) GetBestHeight() int {
+	var lastBlock bloks.Block
+
+	err := bc.Db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(blocksBucket))
+		lastHash := b.Get([]byte("l"))
+		blockData := b.Get(lastHash)
+		lastBlock = *bloks.DeserializeBlock(blockData)
+
+		return nil
+	})
+	if err != nil {
+		log.Panic(err)
+	}
+
+	return lastBlock.Height
+
+}
+
+/*
+GetBlockHashes повертає список хешів всіх блоків у ланцюгу.
+*/
+func (bc *Blockchain) GetBlockHashes() [][]byte {
+	var blocks [][]byte
+	bci := bc.Iterator()
+
+	for {
+		block := bci.Next()
+
+		blocks = append(blocks, block.Hash)
+
+		if len(block.PrevBlockHash) == 0 {
+			break
+		}
+	}
+
+	return blocks
+}
+
+/*
+GetBlock знаходить блок по його хешу та повертає його.
+*/
+func (bc *Blockchain) GetBlock(blockHash []byte) (bloks.Block, error) {
+	var block bloks.Block
+
+	err := bc.Db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(blocksBucket))
+
+		blockData := b.Get(blockHash)
+
+		if blockData == nil {
+			return errors.New("block is not found")
+		}
+
+		block = *bloks.DeserializeBlock(blockData)
+
+		return nil
+	})
+	if err != nil {
+		return block, err
+	}
+
+	return block, nil
+}
+
+/*
+AddBlock зберігає блок у базі даних якщо такого не існує.
+*/
+func (bc *Blockchain) AddBlock(block *bloks.Block) {
+	err := bc.Db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(blocksBucket))
+		blockInDb := b.Get(block.Hash)
+
+		if blockInDb != nil {
+			return nil
+		}
+
+		blockData := block.Serialize()
+		err := b.Put(block.Hash, blockData)
+		if err != nil {
+			log.Panic(err)
+		}
+
+		lastHash := b.Get([]byte("l"))
+		lastBlockData := b.Get(lastHash)
+		lastBlock := bloks.DeserializeBlock(lastBlockData)
+
+		if block.Height > lastBlock.Height {
+			err = b.Put([]byte("l"), block.Hash)
+			if err != nil {
+				log.Panic(err)
+			}
+			bc.tip = block.Hash
+		}
+
+		return nil
+	})
+	if err != nil {
+		log.Panic(err)
+	}
 }
 
 /*
 dbExists перевіряє, чи існує файл бази даних.
 */
-func dbExists() bool {
+func dbExists(dbFile string) bool {
 	if _, err := os.Stat(dbFile); os.IsNotExist(err) {
 		return false
 	}
